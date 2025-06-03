@@ -5,7 +5,7 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Union, Optional, List, Type
+from typing import Any, Dict, Union, Optional, List, Type, Callable
 
 import pytorch_lightning as pl
 import torch.nn as nn
@@ -325,17 +325,19 @@ class ClassificationModule(SupervisedLearningModule):
                  weight_decay: float = 0.,
                  optimizer: Type[optim.Optimizer] = optim.Adam,
                  export_onnx: bool = False,
-                 num_classes: Optional[int] = None):
+                 num_classes: Optional[int] = None,
+                 metrics: Optional[dict] = None):
 
-        from packaging.version import Version
-        if Version(torchmetrics.__version__) < Version('0.11.0'):
-            # Older version accepts num_classes = None
-            metrics = {'acc': _AccuracyWithLogits()}  # type: ignore # pylint: disable=no-value-for-parameter
-        else:
-            if num_classes is None:
-                raise ValueError('num_classes must be specified for torchmetrics >= 0.11. '
-                                 'Please either specify it or use an older version of torchmetrics.')
-            metrics = {'acc': torchmetrics.Accuracy('multiclass', num_classes=num_classes)}
+        if metrics is None:
+            from packaging.version import Version
+            if Version(torchmetrics.__version__) < Version('0.11.0'):
+                # Older version accepts num_classes = None
+                metrics = {'acc': _AccuracyWithLogits()}  # type: ignore # pylint: disable=no-value-for-parameter
+            else:
+                if num_classes is None:
+                    raise ValueError('num_classes must be specified for torchmetrics >= 0.11. '
+                                    'Please either specify it or use an older version of torchmetrics.')
+                metrics = {'acc': torchmetrics.Accuracy('multiclass', num_classes=num_classes)}
 
         super().__init__(criterion, metrics,  # type: ignore
                          learning_rate=learning_rate, weight_decay=weight_decay, optimizer=optimizer,
@@ -404,13 +406,14 @@ class Classification(Lightning):
                  export_onnx: bool = False,
                  train_dataloader: Optional[DataLoader] = None,
                  num_classes: Optional[int] = None,
+                 metrics: Optional[dict] = None,
                  **trainer_kwargs):
         if train_dataloader is not None:
             warnings.warn('`train_dataloader` is deprecated and replaced with `train_dataloaders`.', DeprecationWarning)
             train_dataloaders = train_dataloader
         module = ClassificationModule(criterion=criterion, learning_rate=learning_rate,
                                       weight_decay=weight_decay, optimizer=optimizer, export_onnx=export_onnx,
-                                      num_classes=num_classes)
+                                      num_classes=num_classes, metrics=metrics)
         super().__init__(module, Trainer(**trainer_kwargs),
                          train_dataloaders=train_dataloaders, val_dataloaders=val_dataloaders,
                          datamodule=datamodule)
